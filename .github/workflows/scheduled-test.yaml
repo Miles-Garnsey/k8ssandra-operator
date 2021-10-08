@@ -2,7 +2,7 @@
 name: Run single-cluster e2e tests on a schedule
 on:
   schedule:
-    - cron:  '55 2 * * *'
+    - cron:  '45 3 * * *'
 jobs:
   build_image:
     name: Build Image
@@ -79,7 +79,7 @@ jobs:
         run: go get sigs.k8s.io/kind
       - name: Install yq
         run: |
-          wget https://github.com/mikefarah/yq/releases/download/v4.11.2/yq_linux_amd64.tar.gz
+          curl -LO https://github.com/mikefarah/yq/releases/download/v4.11.2/yq_linux_amd64.tar.gz
           tar -xzf yq_linux_amd64.tar.gz
           mkdir -p ~/.local/bin/
           echo "export PATH=~/.local/bin/:$PATH" >> ~/.bashrc 
