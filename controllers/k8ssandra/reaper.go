@@ -24,6 +24,7 @@ import (
 	reaperapi "github.com/k8ssandra/k8ssandra-operator/apis/reaper/v1alpha1"
 	"github.com/k8ssandra/k8ssandra-operator/pkg/annotations"
 	"github.com/k8ssandra/k8ssandra-operator/pkg/cassandra"
+	kerrors "github.com/k8ssandra/k8ssandra-operator/pkg/errors"
 	k8ssandralabels "github.com/k8ssandra/k8ssandra-operator/pkg/labels"
 	"github.com/k8ssandra/k8ssandra-operator/pkg/reaper"
 	"github.com/k8ssandra/k8ssandra-operator/pkg/result"
@@ -57,6 +58,9 @@ func (r *K8ssandraClusterReconciler) reconcileReaperSchema(
 		cassandra.ComputeReplicationFromDcTemplates(3, datacenters...),
 	)
 	if err != nil {
+		if kerrors.IsSchemaDisagreement(err) {
+			return result.RequeueSoon(r.DefaultDelay)
+		}
 		logger.Error(err, "Failed to ensure keyspace replication")
 		return result.Error(err)
 	}

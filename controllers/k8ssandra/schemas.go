@@ -9,6 +9,7 @@ import (
 	api "github.com/k8ssandra/k8ssandra-operator/apis/k8ssandra/v1alpha1"
 	"github.com/k8ssandra/k8ssandra-operator/pkg/annotations"
 	"github.com/k8ssandra/k8ssandra-operator/pkg/cassandra"
+	kerrors "github.com/k8ssandra/k8ssandra-operator/pkg/errors"
 	"github.com/k8ssandra/k8ssandra-operator/pkg/k8ssandra"
 	"github.com/k8ssandra/k8ssandra-operator/pkg/result"
 	"github.com/k8ssandra/k8ssandra-operator/pkg/stargate"
@@ -29,10 +30,6 @@ func (r *K8ssandraClusterReconciler) checkSchemas(
 	mgmtApi, err := r.ManagementApi.NewManagementApiFacade(ctx, dc, remoteClient, logger)
 	if err != nil {
 		return result.Error(err)
-	}
-
-	if recResult := r.checkSchemaAgreement(mgmtApi, logger); recResult.Completed() {
-		return recResult
 	}
 
 	if recResult := r.updateReplicationOfSystemKeyspaces(ctx, kc, mgmtApi, logger); recResult.Completed() {
@@ -164,6 +161,9 @@ func (r *K8ssandraClusterReconciler) updateReplicationOfSystemKeyspaces(
 
 	for _, ks := range api.SystemKeyspaces {
 		if err := mgmtApi.EnsureKeyspaceReplication(ks, replication); err != nil {
+			if kerrors.IsSchemaDisagreement(err) {
+				return result.RequeueSoon(r.DefaultDelay)
+			}
 			logger.Error(err, "Failed to update replication", "keyspace", ks)
 			return result.Error(err)
 		}
@@ -233,10 +233,12 @@ func (r *K8ssandraClusterReconciler) updateUserKeyspacesReplication(
 			continue
 		}
 		if err = ensureKeyspaceReplication(mgmtApi, ks, dc.Name, replicationFactor); err != nil {
+			if kerrors.IsSchemaDisagreement(err) {
+				return result.RequeueSoon(r.DefaultDelay)
+			}
 			logger.Error(err, "Keyspace replication check failed", "Keyspace", ks)
 			return result.Error(err)
 		}
-		// TODO should we check for schema agreement
 	}
 
 	return result.Continue()
@@ -265,9 +267,11 @@ func (r *K8ssandraClusterReconciler) updateUserKeyspacesReplicationForDecommissi
 		if _, updateNeeded := replication[decommDc]; updateNeeded {
 			delete(replication, decommDc)
 			if err = mgmtApi.AlterKeyspace(ks, replication); err != nil {
+				if kerrors.IsSchemaDisagreement(err) {
+					return result.RequeueSoon(r.DefaultDelay)
+				}
 				return result.Error(fmt.Errorf("failed to update replication for keyspace (%s): %v", ks, err))
 			}
-			// TODO should we check for schema agreement
 		}
 	}
 
